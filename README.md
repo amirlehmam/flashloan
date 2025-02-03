@@ -39,9 +39,34 @@ flashloan-arbitrage/
 │   └── onchain/
 │       ├── __init__.py
 │       └── chainlink.py
+├── arbitrage_detection/
+│   ├── __init__.py
+│   └── engine.py
+├── smart_contract/
+│   ├── contracts/
+│   │   └── FlashLoanArbitrage.sol
+│   ├── migrations/
+│   │   └── deploy_contracts.js
+│   ├── tests/
+│   │   └── test_flashloan.js
+│   └── truffle-config.js
+├── integration/
+│   ├── __init__.py
+│   └── trigger.py
+├── monitoring/
+│   ├── __init__.py
+│   └── dashboard.py
+├── backtesting/
+│   ├── __init__.py
+│   └── backtest.py
+├── risk_management/
+│   ├── __init__.py
+│   └── risk.py
 ├── utils/
 │   ├── __init__.py
 │   └── normalization.py
 ├── requirements.txt
+├── docker-compose.yml
 └── README.md
+
 ```
