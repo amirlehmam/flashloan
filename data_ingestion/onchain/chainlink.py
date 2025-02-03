@@ -1,13 +1,20 @@
 from web3 import Web3
 import asyncio
 import logging
+from eth_utils import to_checksum_address
 
-# Connect to Ethereum via Infura (update YOUR_INFURA_PROJECT_ID)
+
+
+# Connect to Ethereum via Infura (update YOUR_INFURA_PROJECT_ID accordingly)
 infura_url = "https://mainnet.infura.io/v3/58d60a83e2b34cdc854a390914f88304"
 web3 = Web3(Web3.HTTPProvider(infura_url))
 
-# Chainlink Aggregator for ETH/USD (example address; update as needed)
-aggregator_address = "0x5f4ec3df9cbd43714fe2740f5e3616155c5b8419"
+# Raw aggregator address (non-checksum)
+aggregator_address_raw = "0x5f4ec3df9cbd43714fe2740f5e3616155c5b8419"
+# Convert to checksum address using the Web3 class method
+aggregator_address = to_checksum_address(aggregator_address_raw)
+
+# Chainlink Aggregator ABI for ETH/USD (example ABI; adjust as needed)
 abi = [
     {
         "inputs": [],
@@ -29,12 +36,12 @@ aggregator = web3.eth.contract(address=aggregator_address, abi=abi)
 def get_chainlink_price():
     try:
         round_data = aggregator.functions.latestRoundData().call()
-        price = round_data[1] / 1e8  # Chainlink scales price by 10^8
+        price = round_data[1] / 1e8  # Chainlink prices are scaled by 10^8
         timestamp = round_data[3]
         return {
             "asset": "ETH-USD",
             "price": price,
-            "volume": 0,  # Volume not provided by aggregator
+            "volume": 0,  # Volume is not provided by the aggregator
             "timestamp": timestamp,
             "exchange": "chainlink"
         }
