@@ -9,7 +9,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /*
  * Interfaces for Aave V2 Flash Loans.
- * In production, please verify the interface with the latest Aave documentation.
+ * (Double-check these with the latest Aave documentation.)
  */
 interface IPool {
     function flashLoan(
@@ -33,44 +33,58 @@ interface IFlashLoanReceiver {
     ) external returns (bool);
 }
 
+/*
+ * Minimal interface for Uniswap V2 Router (and similar DEXs).
+ */
+interface IUniswapV2Router02 {
+    function swapExactTokensForTokens(
+        uint256 amountIn, 
+        uint256 amountOutMin, 
+        address[] calldata path, 
+        address to, 
+        uint256 deadline
+    ) external returns (uint256[] memory amounts);
+}
+
 // ================================================
 // FLASH LOAN ARBITRAGE CONTRACT
 // ================================================
 contract FlashLoanArbitrage is IFlashLoanReceiver, ReentrancyGuard {
-    // Address of the liquidity pool (e.g. Aave V2 Pool)
-    IPool public pool;
-    // Owner of the contract (for administrative tasks)
-    address public owner;
+    // --------------------------------------------
+    // State Variables
+    // --------------------------------------------
+    IPool public pool;          // Address of the flash loan pool (e.g., Aave V2 Pool)
+    address public owner;       // Owner (for administrative functions)
 
-    // ================================================
-    // EVENTS (optional, for easier off-chain monitoring)
-    // ================================================
+    // --------------------------------------------
+    // Events (for off-chain monitoring)
+    // --------------------------------------------
     event FlashLoanInitiated(address[] assets, uint256[] amounts);
     event ArbitrageExecuted(address initiator, uint256[] premiums);
     event Withdrawal(address token, uint256 amount);
 
-    // ================================================
-    // CONSTRUCTOR
-    // ================================================
+    // --------------------------------------------
+    // Constructor
+    // --------------------------------------------
     constructor(address _pool) {
         pool = IPool(_pool);
         owner = msg.sender;
     }
 
     // ================================================
-    // FUNCTION: Execute Flash Loan
+    // FUNCTION: executeFlashLoan
     // -----------------------------------------------
-    // Initiates a flash loan by calling the pool's flashLoan function.
+    // Initiates a flash loan.
     // _assets: Array of token addresses to borrow.
     // _amounts: Array of amounts for each token.
-    // _params: Encoded parameters that can be used in the arbitrage logic.
+    // _params: Encoded parameters for arbitrage logic.
     // ================================================
     function executeFlashLoan(
         address[] calldata _assets, 
         uint256[] calldata _amounts, 
         bytes calldata _params
     ) external nonReentrant {
-        // For a flash loan, all modes should be 0 (no debt).
+        // For a flash loan, set modes to 0 (no debt).
         uint256[] memory modes = new uint256[](_assets.length);
         for (uint i = 0; i < _assets.length; i++) {
             modes[i] = 0;
@@ -93,8 +107,8 @@ contract FlashLoanArbitrage is IFlashLoanReceiver, ReentrancyGuard {
     // ================================================
     // CALLBACK: executeOperation
     // -----------------------------------------------
-    // This function is called by the pool after the funds are sent.
-    // The function must perform the arbitrage/trading logic and ensure repayment.
+    // Called by the pool after the funds are sent.
+    // Executes arbitrage logic and repays the loan.
     // ================================================
     function executeOperation(
         address[] calldata _assets,
@@ -103,43 +117,93 @@ contract FlashLoanArbitrage is IFlashLoanReceiver, ReentrancyGuard {
         address _initiator,
         bytes calldata _params
     ) external override returns (bool) {
-        // Ensure that only the pool can call this function and that the initiator is this contract.
+        // Ensure only the pool can call this function and that the initiator is this contract.
         require(msg.sender == address(pool), "Caller must be the pool");
-        require(_initiator == address(this), "Not initiated by this contract");
+        require(_initiator == address(this), "Initiator must be this contract");
 
         // ===================================================
-        // PLACE YOUR ARBITRAGE/TRADE LOGIC HERE:
+        // Decode Arbitrage Parameters
         // ===================================================
-        // Example:
-        // 1. Swap borrowed tokens across different exchanges.
-        // 2. Capture the price difference (spread).
-        // 3. Ensure that after the trade, the contract has enough funds to repay _amounts + _premiums.
-        //
-        // IMPORTANT: If any step fails (insufficient profit, slippage, execution error), 
-        // the transaction must revert. This ensures atomicity (only gas fees are lost).
-        //
-        // For this example, we assume the trade is successful.
-        // ---------------------------------------------------
-        
-        // Example (pseudo-code):
-        // require(executeArbitrage(_assets, _amounts, _params), "Arbitrage failed");
+        // Expect _params to be ABI encoded as:
+        // (address routerA, address routerB, uint256 amountOutMin, address[] pathA, address[] pathB)
+        // - routerA: DEX to swap token A for token B.
+        // - routerB: DEX to swap token B back to token A.
+        // - amountOutMin: Minimum acceptable output of token A from the second swap.
+        // - pathA: Swap path for routerA (token A -> token B).
+        // - pathB: Swap path for routerB (token B -> token A).
+        (address routerA, address routerB, uint256 amountOutMin, address[] memory pathA, address[] memory pathB) =
+            abi.decode(_params, (address, address, uint256, address[], address[]));
 
         // ===================================================
-        // Repay the flash loan: Approve the pool to pull the owed amount.
+        // Assume the flash loan is for a single asset.
+        // _assets[0] is token A.
         // ===================================================
-        for (uint i = 0; i < _assets.length; i++) {
-            uint256 amountOwed = _amounts[i] + _premiums[i];
-            IERC20(_assets[i]).approve(address(pool), amountOwed);
-        }
-        
+        address tokenA = _assets[0];
+        uint256 amountBorrowed = _amounts[0];
+
+        // ===================================================
+        // Step 1: Execute the first swap on routerA: token A -> token B.
+        // ===================================================
+        // Approve routerA to spend token A.
+        IERC20(tokenA).approve(routerA, amountBorrowed);
+
+        uint256 deadline = block.timestamp + 300; // 5-minute deadline.
+        uint256[] memory amountsOutA = IUniswapV2Router02(routerA).swapExactTokensForTokens(
+            amountBorrowed,
+            1, // Set minimum output to 1 for demonstration. In production, use proper slippage protection.
+            pathA,
+            address(this),
+            deadline
+        );
+
+        // Determine the amount of token B received.
+        uint256 amountTokenB = amountsOutA[amountsOutA.length - 1];
+
+        // ===================================================
+        // Step 2: Execute the second swap on routerB: token B -> token A.
+        // ===================================================
+        // The last element of pathA is token B.
+        address tokenB = pathA[pathA.length - 1];
+
+        // Approve routerB to spend token B.
+        IERC20(tokenB).approve(routerB, amountTokenB);
+
+        uint256[] memory amountsOutB = IUniswapV2Router02(routerB).swapExactTokensForTokens(
+            amountTokenB,
+            amountOutMin, // Minimum amount of token A expected.
+            pathB,
+            address(this),
+            deadline
+        );
+
+        // Determine the amount of token A received after the second swap.
+        uint256 amountReceivedTokenA = amountsOutB[amountsOutB.length - 1];
+
+        // ===================================================
+        // Step 3: Check Profitability
+        // ===================================================
+        // Calculate the total amount owed (borrowed amount + premium).
+        uint256 amountOwed = amountBorrowed + _premiums[0];
+
+        // Require that the received token A is enough to repay the flash loan.
+        require(amountReceivedTokenA >= amountOwed, "Arbitrage not profitable");
+
+        // ===================================================
+        // Step 4: Repay the Flash Loan
+        // ===================================================
+        // Approve the pool to withdraw the owed amount.
+        IERC20(tokenA).approve(address(pool), amountOwed);
+
+        // Emit an event indicating successful arbitrage.
         emit ArbitrageExecuted(_initiator, _premiums);
+
         return true;
     }
 
     // ================================================
     // ADMIN FUNCTION: Withdraw tokens
     // -----------------------------------------------
-    // In case tokens are mistakenly sent to this contract, allow the owner to withdraw them.
+    // Allows the owner to withdraw tokens sent accidentally to this contract.
     // ================================================
     function withdrawToken(address _token, uint256 _amount) external {
         require(msg.sender == owner, "Only owner can withdraw");
