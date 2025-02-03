@@ -26,6 +26,7 @@ This repository contains the Data Ingestion & Preprocessing module for our flash
 
 ## Repository Structure
 
+```plaintext
 flashloan-arbitrage/
 ├── data_ingestion/
 │   ├── __init__.py
@@ -43,3 +44,4 @@ flashloan-arbitrage/
 │   └── normalization.py
 ├── requirements.txt
 └── README.md
+```
