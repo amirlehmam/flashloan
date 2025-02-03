@@ -1,5 +1,3 @@
-# flashloan
-
 # Flashloan Arbitrage Data Ingestion & Preprocessing
 
 This repository contains the Data Ingestion & Preprocessing module for our flash loan arbitrage project. It collects real‑time market data from multiple exchanges (Binance, Coinbase, Kraken) via WebSocket connections and simulates on‑chain price feeds (e.g., Chainlink). Incoming data is normalized into a standard format for further processing by the arbitrage detection engine.
