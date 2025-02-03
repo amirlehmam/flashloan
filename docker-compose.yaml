@@ -1,0 +1,32 @@
+version: "3.8"
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - PRIVATE_KEY=${PRIVATE_KEY}
+      - INFURA_URL=${INFURA_URL}
+    restart: always
+
+  dashboard:
+    image: python:3.9-slim
+    working_dir: /app
+    volumes:
+      - .:/app
+    command: streamlit run dashboard.py --server.port 8501
+    ports:
+      - "8501:8501"
+    restart: always
+
+  monitor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: python execution_monitor.py
+    environment:
+      - PRIVATE_KEY=${PRIVATE_KEY}
+      - INFURA_URL=${INFURA_URL}
+    restart: always
