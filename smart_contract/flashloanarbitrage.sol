@@ -9,7 +9,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /*
  * Interfaces for Aave V2 Flash Loans.
- * Check with the latest Aave docs for the most up‑to‑date interface.
+ * Ensure you check with the latest Aave documentation for any interface changes.
  */
 interface IPool {
     function flashLoan(
@@ -54,13 +54,13 @@ contract FlashLoanArbitrage is IFlashLoanReceiver, ReentrancyGuard {
     // State Variables
     // -----------------------------------------------------
     IPool public pool;          // Address of the flash loan pool (e.g., Aave V2)
-    address public owner;       // Contract owner for administrative functions
+    address public owner;       // Contract owner (for administrative functions)
 
     // -----------------------------------------------------
-    // Events (for off-chain monitoring)
+    // Events (for on-chain logging & off-chain monitoring)
     // -----------------------------------------------------
     event FlashLoanInitiated(address[] assets, uint256[] amounts);
-    event ArbitrageExecuted(address initiator, uint256[] premiums, uint256 profit);
+    event ArbitrageExecuted(address indexed initiator, uint256[] premiums, uint256 profit);
     event Withdrawal(address token, uint256 amount);
 
     // -----------------------------------------------------
@@ -77,8 +77,8 @@ contract FlashLoanArbitrage is IFlashLoanReceiver, ReentrancyGuard {
     // -----------------------------------------------------
     // Initiates a flash loan by calling the pool's flashLoan function.
     // _assets: Array of token addresses to borrow.
-    // _amounts: Array of amounts for each token.
-    // _params: Encoded parameters for arbitrage logic.
+    // _amounts: Array of amounts to borrow for each token.
+    // _params: ABI-encoded parameters for arbitrage logic.
     // =====================================================
     function executeFlashLoan(
         address[] calldata _assets, 
@@ -88,7 +88,7 @@ contract FlashLoanArbitrage is IFlashLoanReceiver, ReentrancyGuard {
         require(_assets.length > 0, "Must borrow at least one asset");
         require(_assets.length == _amounts.length, "Assets and amounts mismatch");
         
-        // Set all modes to 0 (flash loan mode).
+        // Set all modes to 0 for flash loan (no debt)
         uint256[] memory modes = new uint256[](_assets.length);
         for (uint i = 0; i < _assets.length; i++) {
             modes[i] = 0;
@@ -102,7 +102,7 @@ contract FlashLoanArbitrage is IFlashLoanReceiver, ReentrancyGuard {
             modes,
             address(this),
             _params,
-            0 // referralCode (0 if none)
+            0  // referralCode (if none, set to 0)
         );
         
         emit FlashLoanInitiated(_assets, _amounts);
@@ -111,8 +111,8 @@ contract FlashLoanArbitrage is IFlashLoanReceiver, ReentrancyGuard {
     // =====================================================
     // CALLBACK: executeOperation
     // -----------------------------------------------------
-    // This function is called by the pool after the flash loan funds are sent.
-    // It must execute the arbitrage logic and ensure repayment (plus fee) in one transaction.
+    // Called by the pool after funds are sent.
+    // Executes arbitrage logic and repays the flash loan (plus fee) within one atomic transaction.
     // =====================================================
     function executeOperation(
         address[] calldata _assets,
@@ -121,25 +121,25 @@ contract FlashLoanArbitrage is IFlashLoanReceiver, ReentrancyGuard {
         address _initiator,
         bytes calldata _params
     ) external override nonReentrant returns (bool) {
-        // Only the pool may call this function.
-        require(msg.sender == address(pool), "Caller must be pool");
+        // Security: Only the pool may call this function.
+        require(msg.sender == address(pool), "Caller must be the pool");
         // The initiator must be this contract.
         require(_initiator == address(this), "Initiator must be this contract");
 
         // -------------------------------------------------
         // Decode Arbitrage Parameters
         // -------------------------------------------------
-        // Expect _params to be ABI-encoded as:
+        // _params is expected to be ABI-encoded as:
         // (address routerA, address routerB, uint256 minTokenAOut, uint256 deadline, address[] pathA, address[] pathB)
-        //   - routerA: DEX router to swap token A -> token B.
-        //   - routerB: DEX router to swap token B -> token A.
-        //   - minTokenAOut: Minimum acceptable output for token A from the second swap (slippage protection).
-        //   - deadline: Unix timestamp by which swaps must complete.
-        //   - pathA: Swap path for the first swap (token A -> token B).
-        //   - pathB: Swap path for the second swap (token B -> token A).
+        //   - routerA: DEX router for first swap (token A -> token B).
+        //   - routerB: DEX router for second swap (token B -> token A).
+        //   - minTokenAOut: Minimum acceptable output of token A from the second swap (slippage protection).
+        //   - deadline: Unix timestamp by which the swaps must complete.
+        //   - pathA: Swap path for routerA (token A -> token B).
+        //   - pathB: Swap path for routerB (token B -> token A).
         (address routerA, address routerB, uint256 minTokenAOut, uint256 deadline, address[] memory pathA, address[] memory pathB) =
             abi.decode(_params, (address, address, uint256, uint256, address[], address[]));
-        
+
         require(block.timestamp <= deadline, "Transaction deadline passed");
 
         // -------------------------------------------------
@@ -155,46 +155,43 @@ contract FlashLoanArbitrage is IFlashLoanReceiver, ReentrancyGuard {
         IERC20(tokenA).approve(routerA, amountBorrowed);
         uint256[] memory amountsOutA = IUniswapV2Router02(routerA).swapExactTokensForTokens(
             amountBorrowed,
-            1, // Minimal output; production code should enforce proper slippage limits.
+            1,  // Minimal output; production code should enforce proper slippage limits.
             pathA,
             address(this),
             deadline
         );
-        // The last element in amountsOutA is the amount of token B received.
         uint256 amountTokenB = amountsOutA[amountsOutA.length - 1];
 
         // -------------------------------------------------
         // Step 2: Swap token B back to token A on routerB.
         // -------------------------------------------------
-        // The last element of pathA is token B.
+        // The last element in pathA is token B.
         address tokenB = pathA[pathA.length - 1];
-        // Approve routerB to spend token B.
         IERC20(tokenB).approve(routerB, amountTokenB);
         uint256[] memory amountsOutB = IUniswapV2Router02(routerB).swapExactTokensForTokens(
             amountTokenB,
-            minTokenAOut, // Enforce minimum acceptable token A received.
+            minTokenAOut,  // Enforce minimum acceptable token A received.
             pathB,
             address(this),
             deadline
         );
-        // The last element is the amount of token A received.
         uint256 amountReceivedTokenA = amountsOutB[amountsOutB.length - 1];
 
         // -------------------------------------------------
-        // Step 3: Check Profitability and Slippage.
+        // Step 3: Check Profitability and Enforce Slippage/Profit Threshold.
         // -------------------------------------------------
-        // Calculate total amount owed (borrowed amount + premium fee).
         uint256 amountOwed = amountBorrowed + _premiums[0];
         require(amountReceivedTokenA >= amountOwed, "Arbitrage not profitable");
-        // Optionally, enforce a minimum profit threshold.
         uint256 profit = amountReceivedTokenA - amountOwed;
-        // For example: require(profit >= someMinProfit, "Profit too low");
+        // Optional: enforce a minimum profit threshold.
+        // For example: require(profit >= SOME_MIN_PROFIT, "Profit too low");
 
         // -------------------------------------------------
         // Step 4: Approve Repayment and Repay Flash Loan.
         // -------------------------------------------------
         IERC20(tokenA).approve(address(pool), amountOwed);
 
+        // Emit event with arbitrage result.
         emit ArbitrageExecuted(_initiator, _premiums, profit);
 
         return true;
@@ -203,7 +200,7 @@ contract FlashLoanArbitrage is IFlashLoanReceiver, ReentrancyGuard {
     // =====================================================
     // ADMIN FUNCTION: withdrawToken
     // -----------------------------------------------------
-    // Allows the owner to withdraw any ERC20 tokens sent to this contract.
+    // Allows the owner to withdraw any ERC20 tokens inadvertently sent to this contract.
     // =====================================================
     function withdrawToken(address _token, uint256 _amount) external {
         require(msg.sender == owner, "Only owner can withdraw");
