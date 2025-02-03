@@ -71,6 +71,7 @@ flashloan-arbitrage/
 ├── execution_monitor.py
 ├── dashboard.py
 ├── docker-compose.yml
+├── Dockerfile
 └── README.md
 
 ```
