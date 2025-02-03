@@ -18,7 +18,7 @@ async def fake_data_producer(queue: asyncio.Queue):
             for exchange in exchanges:
                 # Simulate a base price and add a random fluctuation.
                 base_price = 50000 if asset == 'BTC-USD' else 3000
-                price = base_price * (1 + random.uniform(-0.005, 0.005))  # +/- 0.5% fluctuation
+                price = base_price * (1 + random.uniform(-0.002, 0.002))  # +/- 0.2% fluctuation
                 volume = random.uniform(100, 1000)
                 normalized_data = {
                     'exchange': exchange,
