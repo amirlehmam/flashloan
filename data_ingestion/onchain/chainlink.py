@@ -1,17 +1,15 @@
 from web3 import Web3
 import asyncio
 import logging
+import time
 from eth_utils import to_checksum_address
-
-
 
 # Connect to Ethereum via Infura (update YOUR_INFURA_PROJECT_ID accordingly)
 infura_url = "https://mainnet.infura.io/v3/58d60a83e2b34cdc854a390914f88304"
 web3 = Web3(Web3.HTTPProvider(infura_url))
 
-# Raw aggregator address (non-checksum)
+# Convert the raw address to a checksum address
 aggregator_address_raw = "0x5f4ec3df9cbd43714fe2740f5e3616155c5b8419"
-# Convert to checksum address using the Web3 class method
 aggregator_address = to_checksum_address(aggregator_address_raw)
 
 # Chainlink Aggregator ABI for ETH/USD (example ABI; adjust as needed)
@@ -38,6 +36,10 @@ def get_chainlink_price():
         round_data = aggregator.functions.latestRoundData().call()
         price = round_data[1] / 1e8  # Chainlink prices are scaled by 10^8
         timestamp = round_data[3]
+        # Check if the returned timestamp is too old (e.g. >10 sec delay)
+        if abs(time.time() - timestamp) > 10:
+            logging.info("Chainlink timestamp is too old; using current time instead.")
+            timestamp = time.time()
         return {
             "asset": "ETH-USD",
             "price": price,

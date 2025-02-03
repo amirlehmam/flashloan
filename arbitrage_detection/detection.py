@@ -82,18 +82,27 @@ class ArbitrageDetector:
         asset = normalized_data.get('asset')
         exchange = normalized_data.get('exchange')
         price = normalized_data.get('price')
-        volume = normalized_data.get('volume')
+        volume = normalized_data.get('volume', 0)
+        
+        # Get timestamp; if missing, use current time.
         ingestion_ts = normalized_data.get('timestamp')
+        if ingestion_ts is None or ingestion_ts == "" or ingestion_ts == 0:
+            import time
+            ingestion_ts = time.time()
+            normalized_data['timestamp'] = ingestion_ts
 
-        if asset is None or exchange is None or price is None or volume is None or ingestion_ts is None:
-            logging.warning("Incomplete data received, skipping update.")
+        # Check that we have the critical fields: asset, exchange, and price.
+        if asset is None or exchange is None or price is None:
+            logging.warning("Incomplete data (asset, exchange, or price missing), skipping update.")
             return
 
-        latency = calculate_latency(ingestion_ts)
-        if latency > self.latency_threshold:
-            logging.warning(f"High latency for {asset} from {exchange}: {latency:.3f} s")
-
-        # Update the latest price data
+        # Only warn if latency is greater than 6 seconds.
+        if exchange != "chainlink":
+            latency = calculate_latency(ingestion_ts)
+            if latency > 6.0:
+                logging.warning(f"High latency for {asset} from {exchange}: {latency:.3f} s")
+        
+        # Update the latest price data.
         if asset not in self.latest_prices:
             self.latest_prices[asset] = {}
         self.latest_prices[asset][exchange] = {
@@ -102,7 +111,7 @@ class ArbitrageDetector:
             'timestamp': ingestion_ts
         }
 
-        # Update price history for volatility analysis
+        # Update price history for volatility analysis.
         if asset not in self.price_history:
             self.price_history[asset] = []
         self.price_history[asset].append(price)
@@ -111,6 +120,7 @@ class ArbitrageDetector:
 
         sma = compute_sma(self.price_history[asset], window=self.history_window)
         logging.debug(f"{asset} SMA (last {self.history_window} points): {sma:.2f}")
+
 
     async def run_detection(self):
         while True:

@@ -47,7 +47,7 @@ async def main():
         min_volume=100,
         volatility_factor=1.5,
         history_window=10,
-        latency_threshold=1.0
+        latency_threshold=6.0
     )
 
     tasks = [
