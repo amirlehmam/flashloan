@@ -4,6 +4,8 @@ import logging
 # Import stream functions from exchange modules and on-chain module
 from data_ingestion.exchanges import binance, coinbase, kraken
 from data_ingestion.onchain import chainlink
+from utils.normalization import normalize_data
+
 
 async def main():
     # Set up logging
