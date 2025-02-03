@@ -1,2 +1,3 @@
 # arbitrage_detection/__init__.py
-# This package handles data ingestion from multiple exchanges and on-chain sources.
+# This package contains the arbitrage detection engine which processes normalized market data
+# to detect arbitrage opportunities across different exchanges.
