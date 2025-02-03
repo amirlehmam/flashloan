@@ -16,9 +16,10 @@ async def subscribe(ws):
 
 async def process_message(message: str, queue=None):
     try:
+        logging.debug("Coinbase raw message: " + message)
         data = json.loads(message)
         normalized = normalize_data('coinbase', data)
-        logging.info(f"Coinbase data: {normalized}")
+        logging.debug(f"Coinbase normalized data: {normalized}")
         if queue:
             await queue.put(normalized)
     except Exception as e:

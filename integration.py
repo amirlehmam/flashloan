@@ -2,11 +2,14 @@ import asyncio
 import logging
 import os
 
+# Set logging to DEBUG to show all messages.
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+
 from data_ingestion.exchanges import binance, coinbase, kraken
 from data_ingestion.onchain import chainlink
 from arbitrage_detection.detection import ArbitrageDetector
 
-# Option to use Redis for production-grade messaging
+# For now, we are not using Redis (set USE_REDIS=false)
 USE_REDIS = os.getenv("USE_REDIS", "false").lower() == "true"
 
 if USE_REDIS:
@@ -31,23 +34,22 @@ else:
     async def data_consumer(queue: asyncio.Queue, detector: ArbitrageDetector):
         while True:
             normalized_data = await queue.get()
+            logging.debug(f"Data consumer received: {normalized_data}")
             await detector.update_data(normalized_data)
             queue.task_done()
 
 async def main():
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-    # Shared queue for normalized market data
+    # Create a shared queue for normalized market data
     data_queue = asyncio.Queue()
 
-    # Initialize the arbitrage detector with our enhanced settings
+    # Initialize the arbitrage detector with low thresholds (for testing)
     detector = ArbitrageDetector(
-        spread_threshold=0.5,
+        spread_threshold=0.1,    # very low spread threshold for testing
         update_interval=2,
-        min_volume=100,
-        volatility_factor=1.5,
-        history_window=10,
-        latency_threshold=6.0
+        min_volume=0,            # accept all volumes
+        volatility_factor=0.5,   # low volatility factor
+        history_window=5,
+        latency_threshold=6.0    # 6 seconds threshold
     )
 
     tasks = [

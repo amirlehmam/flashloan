@@ -17,10 +17,11 @@ async def subscribe(ws):
 
 async def process_message(message: str, queue=None):
     try:
+        logging.debug("Kraken raw message: " + message)
         data = json.loads(message)
         if isinstance(data, list):
             normalized = normalize_data('kraken', data)
-            logging.info(f"Kraken data: {normalized}")
+            logging.debug(f"Kraken normalized data: {normalized}")
             if queue:
                 await queue.put(normalized)
         else:
