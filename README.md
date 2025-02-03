@@ -67,7 +67,22 @@ flashloan-arbitrage/
 │   └── normalization.py
 ├── requirements.txt
 ├── integration.py
+├── integration_trigger.py
+├── execution_monitor.py
+├── dashboard.py
 ├── docker-compose.yml
 └── README.md
 
 ```
+
+## Final Integration & Usage
+
+1. **Deploy and Run:**
+- Deploy your smart contract and note its address.
+- Run your off‑chain monitoring module (execution_monitor.py) to capture and log transaction details and on‑chain events.
+- Start the dashboard with:
+streamlit run dashboard.py
+
+2. **Monitoring & Logging:**
+- The execution_logs.log file will contain a detailed audit trail of your transaction execution.
+- On‑chain events from your flash loan contract (such as ArbitrageExecuted) can be monitored by your off‑chain module and stored as needed.
